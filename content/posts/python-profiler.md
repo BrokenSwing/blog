@@ -2,7 +2,7 @@
 title: "Python Profiler"
 date: 2022-04-02T22:22:56+02:00
 description: Learn how to profile a Python program by writing your own profiler.
-draft: true
+draft: false
 ---
 
 Profiling a program allows to detect bottlenecks to optimize either memory or speed of this one. Profiling is achieved in different ways depending the language but Python allows to very easily provide a profiler.
