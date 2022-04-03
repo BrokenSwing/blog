@@ -1,0 +1,534 @@
+<!doctype html><html lang=en>
+<head>
+<title>
+Python Profiler ::
+BrokenSwing's blog — Blog de Florent HUGOUVIEUX
+</title>
+<meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<meta name=description content="Profiling a program allows to detect bottlenecks to optimize either memory or speed of this one. Profiling is achieved in different ways depending the language but Python allows to very easily provide a profiler.
+In this article we will quickly see the features of the default profiler provided by Python then we will explore the world of writing it&amp;rsquo;s own profiler.
+Python profile and cProfile modules #  Python provides two implementations of profilers: profile and cProfile.">
+<meta name=keywords content>
+<meta name=robots content="noodp">
+<link rel=canonical href=/posts/python-profiler/>
+<link rel=stylesheet href=/assets/style.css>
+<link rel=stylesheet href=/style.css>
+<link rel=apple-touch-icon-precomposed sizes=144x144 href=/img/apple-touch-icon-144-precomposed.png>
+<link rel="shortcut icon" href=/img/favicon.png>
+<link href=/assets/fonts/Inter-Italic.woff2 rel=preload type=font/woff2 as=font crossorigin>
+<link href=/assets/fonts/Inter-Regular.woff2 rel=preload type=font/woff2 as=font crossorigin>
+<link href=/assets/fonts/Inter-Medium.woff2 rel=preload type=font/woff2 as=font crossorigin>
+<link href=/assets/fonts/Inter-MediumItalic.woff2 rel=preload type=font/woff2 as=font crossorigin>
+<link href=/assets/fonts/Inter-Bold.woff2 rel=preload type=font/woff2 as=font crossorigin>
+<link href=/assets/fonts/Inter-BoldItalic.woff2 rel=preload type=font/woff2 as=font crossorigin>
+<meta name=twitter:card content="summary">
+<meta name=twitter:title content="Python Profiler">
+<meta name=twitter:description content="Learn how to profile a Python program by writing your own profiler.">
+<meta property="og:title" content="Python Profiler">
+<meta property="og:description" content="Learn how to profile a Python program by writing your own profiler.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="/posts/python-profiler/"><meta property="article:section" content="posts">
+<meta property="article:published_time" content="2022-04-02T22:22:56+02:00">
+<meta property="article:modified_time" content="2022-04-03T22:26:00+02:00"><meta property="og:site_name" content="BrokenSwing's blog">
+</head>
+<body class=dark-theme>
+<div class=container>
+<header class=header>
+<span class=header__inner>
+<a href=/ class=logo style=text-decoration:none>
+<span class=logo__mark><svg xmlns="http://www.w3.org/2000/svg" class="greater-icon" viewBox="0 0 44 44"><path fill="none" d="M15 8l14.729 14.382L15 35.367"/></svg>
+</span>
+<span class=logo__text>BrokenSwing</span>
+<span class=logo__cursor></span>
+</a>
+<span class=header__right>
+<span class=theme-toggle><svg class="theme-toggler" width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 41c10.4934.0 19-8.5066 19-19C41 11.5066 32.4934 3 22 3 11.5066 3 3 11.5066 3 22s8.5066 19 19 19zM7 22C7 13.7157 13.7157 7 22 7V37C13.7157 37 7 30.2843 7 22z"/></svg>
+</span>
+</span>
+</span>
+</header>
+<div class=content>
+<div class=post>
+<h1 class=post-title>Python Profiler</h1>
+<div class=post-meta>
+<span class=post-date>
+2022-04-02
+</span>
+<span class=post-read-time>— 10 min read</span>
+</div>
+<div class=post-content>
+<p>Profiling a program allows to detect bottlenecks to optimize either memory or speed of this one. Profiling is achieved in different ways depending the language but Python allows to very easily provide a profiler.</p>
+<p>In this article we will quickly see the features of the default profiler provided by Python then we will explore the world of writing it&rsquo;s own profiler.</p>
+<h2 id=python-profile-and-cprofile-modules>
+Python <code>profile</code> and <code>cProfile</code> modules
+<a href=#python-profile-and-cprofile-modules class=h-anchor aria-hidden=true>#</a>
+</h2>
+<p>Python provides two implementations of profilers: <code>profile</code> and <code>cProfile</code>. However it&rsquo;s recommended to use <code>cPython</code> because, as the name suggests, it&rsquo;s a C implementation and therefore has less overhead, leading to better results.</p>
+<p>Python approach of profiling is the following: they collect the number of calls to each functions and accumulate the time spent in each of them. The profiler then print for each function:</p>
+<ul>
+<li>the number of calls</li>
+<li>the total time spent in it (excluding calls to sub-functions)</li>
+<li>the average time spent in it (per call, excluding calls to sub-functions)</li>
+<li>the total time spent in it (including calls to sub-functions)</li>
+<li>the average time spent in it (per call, including calls to sub-functions)</li>
+</ul>
+<p><a href=https://docs.python.org/3/library/profile.html#instant-user-s-manual>see the documentation</a></p>
+<p>Calling such profiler is really simple and can also be done using a CLI:</p>
+<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=color:#f92672>import</span> cProfile
+<span style=color:#f92672>import</span> re
+cProfile<span style=color:#f92672>.</span>run(<span style=color:#e6db74>&#39;re.compile(&#34;foo|bar&#34;)&#39;</span>)
+</code></pre></div><p>The default profilers however does not allow for more precise analysis of function calls. Due to these limitations, you could be tempted to write your own profiler.</p>
+<h2 id=writing-our-own-profiler>
+Writing our own profiler
+<a href=#writing-our-own-profiler class=h-anchor aria-hidden=true>#</a>
+</h2>
+<p>In this section we&rsquo;ll discover how to write our own profiler for Python.</p>
+<blockquote>
+<p>For simplicity reasons I&rsquo;ll write the profiler using Python code instead of using a C-extension but writing a profiler using C language will give you much better results by reducing the overhead of profiler&rsquo;s code execution.</p>
+</blockquote>
+<p>Python allows you to provide a profiling function that will be called when entering and exiting function frames. You can provide such function through the <a href=https://docs.python.org/3/library/sys.html#sys.setprofile>sys.setprofile</a> function.</p>
+<p>According to the documentation, the profiling function will receive 3 paramters: <em>frame</em>, <em>event</em> and <em>arg</em>. The <em>event</em> parameter is a string that can take the following values:</p>
+<ul>
+<li><code>'call'</code></li>
+<li><code>'return'</code></li>
+<li><code>'c_call'</code></li>
+<li><code>'c_return'</code></li>
+<li><code>'c_exception'</code></li>
+</ul>
+<p>And <em>arg</em> parameter depends on the event type:</p>
+<ul>
+<li>for <code>'call'</code> <em>arg</em> is <code>None</code></li>
+<li>for <code>'return'</code> <em>arg</em> is the value that will be returned</li>
+<li>for <code>'c_call'</code> <em>arg</em> is the C function object</li>
+<li>for <code>'c_return'</code> <em>arg</em> is the C function object</li>
+<li>for <code>'c_exception'</code> <em>arg</em> is the C function object</li>
+</ul>
+<h3 id=follow-function-calls>
+Follow function calls
+<a href=#follow-function-calls class=h-anchor aria-hidden=true>#</a>
+</h3>
+<p>Let&rsquo;s create a simple profiler that will catch all these events and display the argument.</p>
+<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=color:#f92672>import</span> sys
+<span style=color:#f92672>import</span> time
+
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_call</span>(frame, arg):
+    print(<span style=color:#e6db74>&#34;CALL&#34;</span>)
+
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_return</span>(frame, arg):
+    print(<span style=color:#e6db74>&#34;RETURN&#34;</span>, arg)
+
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_call</span>(frame, arg):
+    print(<span style=color:#e6db74>&#34;C_CALL&#34;</span>, arg)
+
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_return</span>(frame, arg):
+    print(<span style=color:#e6db74>&#34;C_RETURN&#34;</span>, arg)
+
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_exception</span>(frame, arg):
+    print(<span style=color:#e6db74>&#34;C_EXCEPTION&#34;</span>, arg)
+
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profiler</span>(frame, event, arg):
+    profilers <span style=color:#f92672>=</span> {
+        <span style=color:#e6db74>&#34;call&#34;</span>: profile_call,
+        <span style=color:#e6db74>&#34;return&#34;</span>: profile_return,
+        <span style=color:#e6db74>&#34;c_call&#34;</span>: profile_c_call,
+        <span style=color:#e6db74>&#34;c_return&#34;</span>: profile_c_return,
+        <span style=color:#e6db74>&#34;c_exception&#34;</span>: profile_c_exception,
+    }
+    profilers[event](frame, arg)
+
+
+sys<span style=color:#f92672>.</span>setprofile(profiler)
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>a_python_func</span>():
+    time<span style=color:#f92672>.</span>time()
+    <span style=color:#66d9ef>try</span>:
+        <span style=color:#66d9ef>with</span> open(<span style=color:#e6db74>&#34;file2&#34;</span>, <span style=color:#e6db74>&#34;r&#34;</span>):
+            <span style=color:#66d9ef>pass</span>
+    <span style=color:#66d9ef>except</span>:
+        <span style=color:#66d9ef>pass</span>
+    <span style=color:#66d9ef>return</span> <span style=color:#ae81ff>12</span>
+
+a_python_func()
+</code></pre></div><p>When we run the above script, we get the following output:</p>
+<pre tabindex=0><code>CALL
+C_CALL &lt;built-in function time&gt;
+C_RETURN &lt;built-in function time&gt;
+C_CALL &lt;built-in function open&gt;
+C_EXCEPTION &lt;built-in function open&gt;
+RETURN 12
+RETURN None
+</code></pre><p>Let&rsquo;s see if we could have expected that. The profiling starts after the call to <a href=https://docs.python.org/3/library/sys.html#sys.setprofile>sys.setprofile</a>.</p>
+<ol>
+<li>We call <code>a_python_func</code> which is a Python function, it then triggers a <code>'call'</code> event</li>
+<li>We call <a href=https://docs.python.org/fr/3/library/time.html#time.time>time.time</a> which is a built-in C function, it then triggers a <code>'c_call'</code> event</li>
+<li>The <a href=https://docs.python.org/fr/3/library/time.html#time.time>time.time</a> function returns, a <code>'c_return'</code> event is dispatched</li>
+<li>We call <a href=https://docs.python.org/fr/3/library/functions.html#open>open</a> function which is a built-in C function, so it triggers a <code>'c_call'</code> event</li>
+<li>Because we try to read a file that doesn&rsquo;t exist, an exception is triggered by <a href=https://docs.python.org/fr/3/library/functions.html#open>open</a>, so <code>'c_exception'</code> is dispatched</li>
+<li>We return the value <code>12</code> from the Python function, so the <code>'return'</code> event is dispatched</li>
+<li>Finally, (I wasn&rsquo;t expecting this one), the script exits and then dispatch a <code>'return'</code> event</li>
+</ol>
+<p>We achieved to follow the execution of the Python script but we didn&rsquo;t achieve to retrieve the name of the function that were called. Let&rsquo;s try to modify our script a bit.</p>
+<h3 id=retrieve-function-name>
+Retrieve function name
+<a href=#retrieve-function-name class=h-anchor aria-hidden=true>#</a>
+</h3>
+<p>For C functions, it&rsquo;s really easy. They have the <code>__name__</code> attribute that contains the function name, so <code>arg.__name__</code> should return the C function name.</p>
+<p>For Python function however, we saw that the <em>arg</em> value for <code>'call'</code> event is <code>None</code> so we will need to find it elsewhere.</p>
+<p>We would like to find out which attributes the <em>frame</em> parameter has. I wasn&rsquo;t able to find this information in the Python documentation so I decided to put a breakpoint on the <code>print("CALL")</code> line but unfortunately the debugger doesn&rsquo;t get triggered. However, raising an exception in the <code>profile_call</code> function triggers the debugger so I&rsquo;m able to inspect the <em>frame</em> object. The most important attributes for us right now is <code>f_code</code> which has the <code>co_name</code> attribute.</p>
+<p>Let&rsquo;s update our script:</p>
+<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_call</span>(frame, arg):
+    print(<span style=color:#e6db74>&#34;CALL&#34;</span>, frame<span style=color:#f92672>.</span>f_code<span style=color:#f92672>.</span>co_name)
+
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_return</span>(frame, arg):
+    print(<span style=color:#e6db74>&#34;RETURN&#34;</span>, arg)
+
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_call</span>(frame, arg):
+    print(<span style=color:#e6db74>&#34;C_CALL&#34;</span>, arg<span style=color:#f92672>.</span>__name__)
+
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_return</span>(frame, arg):
+    print(<span style=color:#e6db74>&#34;C_RETURN&#34;</span>, arg<span style=color:#f92672>.</span>__name__)
+
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_exception</span>(frame, arg):
+    print(<span style=color:#e6db74>&#34;C_EXCEPTION&#34;</span>, arg<span style=color:#f92672>.</span>__name__)
+</code></pre></div><p>Now, running the script displays:</p>
+<pre tabindex=0><code>CALL a_python_func
+C_CALL time
+C_RETURN time
+C_CALL open
+C_EXCEPTION open
+RETURN 12
+RETURN None
+</code></pre><h3 id=writing-our-results-to-a-file>
+Writing our results to a file
+<a href=#writing-our-results-to-a-file class=h-anchor aria-hidden=true>#</a>
+</h3>
+<p>Output to the stdout is not ideal so let&rsquo;s change a bit our script to output to a file. First, we&rsquo;ll create a class to wrap all of our functions:</p>
+<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=color:#66d9ef>class</span> <span style=color:#a6e22e>Profiler</span>:
+    <span style=color:#66d9ef>def</span> __init__(self):
+        self<span style=color:#f92672>.</span>_frames_stack <span style=color:#f92672>=</span> []
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_call</span>(self, frame, arg):
+        print(<span style=color:#e6db74>&#34;CALL&#34;</span>, frame<span style=color:#f92672>.</span>f_code<span style=color:#f92672>.</span>co_name)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_return</span>(self, frame, arg):
+        print(<span style=color:#e6db74>&#34;RETURN&#34;</span>, frame<span style=color:#f92672>.</span>f_code<span style=color:#f92672>.</span>co_name)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_call</span>(self, frame, arg):
+        print(<span style=color:#e6db74>&#34;C_CALL&#34;</span>, arg<span style=color:#f92672>.</span>__name__)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_return</span>(self, frame, arg):
+        print(<span style=color:#e6db74>&#34;C_RETURN&#34;</span>, arg<span style=color:#f92672>.</span>__name__)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_exception</span>(self, frame, arg):
+        print(<span style=color:#e6db74>&#34;C_EXCEPTION&#34;</span>, arg<span style=color:#f92672>.</span>__name__)
+
+    profilers <span style=color:#f92672>=</span> {
+        <span style=color:#e6db74>&#34;call&#34;</span>: profile_call,
+        <span style=color:#e6db74>&#34;return&#34;</span>: profile_return,
+        <span style=color:#e6db74>&#34;c_call&#34;</span>: profile_c_call,
+        <span style=color:#e6db74>&#34;c_return&#34;</span>: profile_c_return,
+        <span style=color:#e6db74>&#34;c_exception&#34;</span>: profile_c_exception,
+    }
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profiler</span>(self, frame, event, arg):
+        self<span style=color:#f92672>.</span>profilers[event](self, frame, arg)
+
+
+sys<span style=color:#f92672>.</span>setprofile(Profiler()<span style=color:#f92672>.</span>profiler)
+</code></pre></div><p>On let&rsquo;s now add a <code>profile</code> method that will open our file and start the profiling. In our other method we will then be able to write to the file instead of using <a href=https://docs.python.org/3/library/functions.html#print>print</a>:</p>
+<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=color:#66d9ef>class</span> <span style=color:#a6e22e>Profiler</span>:
+    <span style=color:#66d9ef>def</span> __init__(self) <span style=color:#f92672>-&gt;</span> <span style=color:#66d9ef>None</span>:
+        self<span style=color:#f92672>.</span>_file <span style=color:#f92672>=</span> <span style=color:#66d9ef>None</span>
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_call</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;CALL </span><span style=color:#e6db74>{</span>frame<span style=color:#f92672>.</span>f_code<span style=color:#f92672>.</span>co_name<span style=color:#e6db74>}</span><span style=color:#ae81ff>\n</span><span style=color:#e6db74>&#34;</span>)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_return</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;RETURN </span><span style=color:#e6db74>{</span>frame<span style=color:#f92672>.</span>f_code<span style=color:#f92672>.</span>co_name<span style=color:#e6db74>}</span><span style=color:#ae81ff>\n</span><span style=color:#e6db74>&#34;</span>)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_call</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;C_CALL </span><span style=color:#e6db74>{</span>arg<span style=color:#f92672>.</span>__name__<span style=color:#e6db74>}</span><span style=color:#ae81ff>\n</span><span style=color:#e6db74>&#34;</span>)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_return</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;C_RETURN </span><span style=color:#e6db74>{</span>arg<span style=color:#f92672>.</span>__name__<span style=color:#e6db74>}</span><span style=color:#ae81ff>\n</span><span style=color:#e6db74>&#34;</span>)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_exception</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;C_EXCEPTION </span><span style=color:#e6db74>{</span>arg<span style=color:#f92672>.</span>__name__<span style=color:#e6db74>}</span><span style=color:#ae81ff>\n</span><span style=color:#e6db74>&#34;</span>)
+
+    profilers <span style=color:#f92672>=</span> {
+        <span style=color:#e6db74>&#34;call&#34;</span>: profile_call,
+        <span style=color:#e6db74>&#34;return&#34;</span>: profile_return,
+        <span style=color:#e6db74>&#34;c_call&#34;</span>: profile_c_call,
+        <span style=color:#e6db74>&#34;c_return&#34;</span>: profile_c_return,
+        <span style=color:#e6db74>&#34;c_exception&#34;</span>: profile_c_exception,
+    }
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profiler</span>(self, frame, event, arg):
+        self<span style=color:#f92672>.</span>profilers[event](self, frame, arg)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile</span>(self, func):
+        <span style=color:#66d9ef>with</span> open(<span style=color:#e6db74>&#34;events.txt&#34;</span>, <span style=color:#e6db74>&#34;w&#34;</span>) <span style=color:#66d9ef>as</span> file:
+            self<span style=color:#f92672>.</span>_file <span style=color:#f92672>=</span> file
+            sys<span style=color:#f92672>.</span>setprofile(self<span style=color:#f92672>.</span>profiler)
+            <span style=color:#66d9ef>try</span>:
+                func()
+            <span style=color:#66d9ef>finally</span>:
+                sys<span style=color:#f92672>.</span>setprofile(<span style=color:#66d9ef>None</span>)
+</code></pre></div><p>Now, running <code>Profiler().profile(a_python_func)</code> outputs to a file <code>events.txt</code>:</p>
+<pre tabindex=0><code>CALL a_python_func
+C_CALL time
+C_RETURN time
+C_CALL open
+C_EXCEPTION open
+RETURN a_python_func
+C_CALL setprofile
+</code></pre><blockquote>
+<p>Note: We have captured a call to <code>setprofile</code> when calling <code>sys.setprofile(None)</code></p>
+</blockquote>
+<p>Let&rsquo;s associate timings with our profiling logs. To start, let&rsquo;s log time on each log line:</p>
+<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=color:#66d9ef>class</span> <span style=color:#a6e22e>Profiler</span>:
+    
+    <span style=color:#f92672>...</span>
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>_log_time</span>(self):
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;</span><span style=color:#e6db74>{</span>time<span style=color:#f92672>.</span>process_time()<span style=color:#e6db74>}</span><span style=color:#e6db74> &#34;</span>)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_call</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>_log_time()
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;CALL </span><span style=color:#e6db74>{</span>frame<span style=color:#f92672>.</span>f_code<span style=color:#f92672>.</span>co_name<span style=color:#e6db74>}</span><span style=color:#ae81ff>\n</span><span style=color:#e6db74>&#34;</span>)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_return</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>_log_time()
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;RETURN </span><span style=color:#e6db74>{</span>frame<span style=color:#f92672>.</span>f_code<span style=color:#f92672>.</span>co_name<span style=color:#e6db74>}</span><span style=color:#ae81ff>\n</span><span style=color:#e6db74>&#34;</span>)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_call</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>_log_time()
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;C_CALL </span><span style=color:#e6db74>{</span>arg<span style=color:#f92672>.</span>__name__<span style=color:#e6db74>}</span><span style=color:#ae81ff>\n</span><span style=color:#e6db74>&#34;</span>)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_return</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>_log_time()
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;C_RETURN </span><span style=color:#e6db74>{</span>arg<span style=color:#f92672>.</span>__name__<span style=color:#e6db74>}</span><span style=color:#ae81ff>\n</span><span style=color:#e6db74>&#34;</span>)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_exception</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>_log_time()
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;C_EXCEPTION </span><span style=color:#e6db74>{</span>arg<span style=color:#f92672>.</span>__name__<span style=color:#e6db74>}</span><span style=color:#ae81ff>\n</span><span style=color:#e6db74>&#34;</span>)
+    
+    <span style=color:#f92672>...</span>
+</code></pre></div><p>Which outputs:</p>
+<pre tabindex=0><code>0.078125 CALL a_python_func
+0.078125 C_CALL time
+0.078125 C_RETURN time
+0.078125 C_CALL open
+0.078125 C_EXCEPTION open
+0.078125 RETURN a_python_func
+0.078125 C_CALL setprofile
+</code></pre><p>We observe two problems:</p>
+<ol>
+<li>The time is the same of all calls</li>
+<li>The time do not start at 0</li>
+</ol>
+<p>The first problem is due to our calls not taking enough time, <a href=https://docs.python.org/fr/3/library/time.html#time.process_time>time.process_time</a> resolution is too low. This problem should be solved later when calling functions requiring more computational power.</p>
+<blockquote>
+<p>Note: using <a href=https://docs.python.org/fr/3/library/time.html#time.sleep>time.sleep</a> here won&rsquo;t help us because <a href=https://docs.python.org/fr/3/library/time.html#time.process_time>time.process_time</a> doesn&rsquo;t include sleep time.</p>
+</blockquote>
+<p>The second problem can however be solved by retaining the time of the first event of type <code>'call'</code> or <code>'c_call'</code> and substracting later time by this initial time:</p>
+<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=color:#66d9ef>class</span> <span style=color:#a6e22e>Profiler</span>:
+    <span style=color:#66d9ef>def</span> __init__(self) <span style=color:#f92672>-&gt;</span> <span style=color:#66d9ef>None</span>:
+        self<span style=color:#f92672>.</span>_file <span style=color:#f92672>=</span> <span style=color:#66d9ef>None</span>
+        self<span style=color:#f92672>.</span>_initial_time <span style=color:#f92672>=</span> <span style=color:#66d9ef>None</span>
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>_log_time</span>(self):
+        <span style=color:#66d9ef>if</span> self<span style=color:#f92672>.</span>_initial_time <span style=color:#f92672>is</span> <span style=color:#66d9ef>None</span>:
+            self<span style=color:#f92672>.</span>_initial_time <span style=color:#f92672>=</span> time<span style=color:#f92672>.</span>process_time()
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;</span><span style=color:#e6db74>{</span>time<span style=color:#f92672>.</span>process_time() <span style=color:#f92672>-</span> self<span style=color:#f92672>.</span>_initial_time<span style=color:#e6db74>}</span><span style=color:#e6db74> &#34;</span>)
+
+    <span style=color:#f92672>...</span>
+</code></pre></div><p>Which now gives:</p>
+<pre tabindex=0><code>0.0 CALL a_python_func
+0.0 C_CALL time
+0.0 C_RETURN time
+0.0 C_CALL open
+0.0 C_EXCEPTION open
+0.0 RETURN a_python_func
+0.0 C_CALL setprofile
+</code></pre><p>Much better.</p>
+<p>Now let&rsquo;s test our profiler against function with higher computational requirements.</p>
+<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=color:#66d9ef>def</span> <span style=color:#a6e22e>fib</span>(n):
+    <span style=color:#66d9ef>if</span> n <span style=color:#f92672>==</span> <span style=color:#ae81ff>0</span>:
+        <span style=color:#66d9ef>return</span> <span style=color:#ae81ff>0</span>
+    prev <span style=color:#f92672>=</span> <span style=color:#ae81ff>0</span>
+    curr <span style=color:#f92672>=</span> <span style=color:#ae81ff>1</span>
+    <span style=color:#66d9ef>for</span> _ <span style=color:#f92672>in</span> range(<span style=color:#ae81ff>1</span>, n):
+        prev, curr <span style=color:#f92672>=</span> curr, prev <span style=color:#f92672>+</span> curr
+    <span style=color:#66d9ef>return</span> curr
+
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>dump_to_file</span>():
+    <span style=color:#66d9ef>with</span> open(<span style=color:#e6db74>&#34;out.txt&#34;</span>, <span style=color:#e6db74>&#34;w&#34;</span>) <span style=color:#66d9ef>as</span> file:
+        file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>&#34;A&#34;</span> <span style=color:#f92672>*</span> <span style=color:#ae81ff>500_000</span>)
+
+
+<span style=color:#66d9ef>def</span> <span style=color:#a6e22e>b_python_func</span>():
+    fib(<span style=color:#ae81ff>50_000</span>)
+    dump_to_file()
+    <span style=color:#66d9ef>return</span> <span style=color:#ae81ff>12</span>
+
+Profiler()<span style=color:#f92672>.</span>profile(b_python_func)
+</code></pre></div><p>Which gives use:</p>
+<pre tabindex=0><code>0.0 CALL b_python_func
+0.0 CALL fib
+0.015625 RETURN fib
+0.015625 CALL dump_to_file
+0.015625 C_CALL open
+0.015625 CALL getpreferredencoding
+0.015625 C_CALL _getdefaultlocale
+0.015625 C_RETURN _getdefaultlocale
+0.015625 RETURN getpreferredencoding
+0.015625 CALL __init__
+0.015625 RETURN __init__
+0.015625 C_RETURN open
+0.015625 C_CALL write
+0.015625 CALL encode
+0.015625 C_CALL charmap_encode
+0.03125 C_RETURN charmap_encode
+0.03125 RETURN encode
+0.03125 C_RETURN write
+0.03125 C_CALL __exit__
+0.03125 C_RETURN __exit__
+0.03125 RETURN dump_to_file
+0.03125 RETURN b_python_func
+0.03125 C_CALL setprofile
+</code></pre><h3 id=visualization-of-our-profiling>
+Visualization of our profiling
+<a href=#visualization-of-our-profiling class=h-anchor aria-hidden=true>#</a>
+</h3>
+<p>Google Chrome provides a great visualization tool for profiling and we could take advantage of it to view our profiling. This tool can be found at address <a href=chrome://tracing>chrome://tracing</a> in Google Chrome browser. The specification of the file format can be found <a href=https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#>here</a>.</p>
+<p>We see that we can provide an array of JSON object with the following properties:</p>
+<ul>
+<li><code>pid</code>: process id</li>
+<li><code>tid</code>: thread id</li>
+<li><code>name</code>: the name of the function</li>
+<li><code>ts</code>: timestamp of the event</li>
+<li><code>ph</code>: event type (<code>B</code> for enter and <code>E</code> for exit)</li>
+</ul>
+<p>We already have the name, the type and the timestamp. For others, because we only handle 1 process and 1 thread we can put fixed values. Let&rsquo;s write a JSON to our file:</p>
+<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=color:#66d9ef>class</span> <span style=color:#a6e22e>Profiler</span>:
+    
+    <span style=color:#f92672>...</span>
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>__trace_enter</span>(self, func_name):
+        add_comma <span style=color:#f92672>=</span> <span style=color:#66d9ef>True</span>
+        <span style=color:#66d9ef>if</span> self<span style=color:#f92672>.</span>_initial_time <span style=color:#f92672>is</span> <span style=color:#66d9ef>None</span>:
+            self<span style=color:#f92672>.</span>_initial_time <span style=color:#f92672>=</span> time<span style=color:#f92672>.</span>process_time()
+            add_comma <span style=color:#f92672>=</span> <span style=color:#66d9ef>False</span>
+        trace <span style=color:#f92672>=</span> {
+            <span style=color:#e6db74>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>,
+            <span style=color:#e6db74>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>,
+            <span style=color:#e6db74>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>,
+            <span style=color:#e6db74>&#34;ts&#34;</span>: time<span style=color:#f92672>.</span>process_time() <span style=color:#f92672>-</span> self<span style=color:#f92672>.</span>_initial_time,
+            <span style=color:#e6db74>&#34;name&#34;</span>: func_name
+        }
+        <span style=color:#66d9ef>if</span> add_comma:
+            self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>&#34;,</span><span style=color:#ae81ff>\n</span><span style=color:#e6db74>&#34;</span>)
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;</span><span style=color:#e6db74>{</span>json<span style=color:#f92672>.</span>dumps(trace)<span style=color:#e6db74>}</span><span style=color:#e6db74>&#34;</span>)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>__trace_exit</span>(self, func_name):
+        trace <span style=color:#f92672>=</span> {
+            <span style=color:#e6db74>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>,
+            <span style=color:#e6db74>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>,
+            <span style=color:#e6db74>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;E&#34;</span>,
+            <span style=color:#e6db74>&#34;ts&#34;</span>: time<span style=color:#f92672>.</span>process_time() <span style=color:#f92672>-</span> self<span style=color:#f92672>.</span>_initial_time,
+            <span style=color:#e6db74>&#34;name&#34;</span>: func_name
+        }
+        self<span style=color:#f92672>.</span>_file<span style=color:#f92672>.</span>write(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;,</span><span style=color:#ae81ff>\n</span><span style=color:#e6db74>{</span>json<span style=color:#f92672>.</span>dumps(trace)<span style=color:#e6db74>}</span><span style=color:#e6db74>&#34;</span>)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_call</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>__trace_enter(frame<span style=color:#f92672>.</span>f_code<span style=color:#f92672>.</span>co_name)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_return</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>__trace_exit(frame<span style=color:#f92672>.</span>f_code<span style=color:#f92672>.</span>co_name)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_call</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>__trace_enter(arg<span style=color:#f92672>.</span>__name__)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_return</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>__trace_exit(arg<span style=color:#f92672>.</span>__name__)
+
+    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>profile_c_exception</span>(self, frame, arg):
+        self<span style=color:#f92672>.</span>__trace_exit(arg<span style=color:#f92672>.</span>__name__)
+    
+    <span style=color:#f92672>...</span>
+</code></pre></div><p>Which gives us:</p>
+<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-json data-lang=json>[
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.0</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;b_python_func&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.0</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;fib&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;E&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;fib&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;dump_to_file&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;open&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;getpreferredencoding&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;_getdefaultlocale&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;E&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;_getdefaultlocale&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;E&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;getpreferredencoding&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;__init__&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;E&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;__init__&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;E&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;open&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;write&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;encode&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;charmap_encode&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;E&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;charmap_encode&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;E&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.015625</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;encode&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;E&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.03125</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;write&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.03125</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;__exit__&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;E&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.03125</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;__exit__&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;E&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.03125</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;dump_to_file&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;E&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.03125</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;b_python_func&#34;</span>},
+    {<span style=color:#f92672>&#34;pid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;tid&#34;</span>: <span style=color:#ae81ff>1</span>, <span style=color:#f92672>&#34;ph&#34;</span>: <span style=color:#e6db74>&#34;B&#34;</span>, <span style=color:#f92672>&#34;ts&#34;</span>: <span style=color:#ae81ff>0.03125</span>, <span style=color:#f92672>&#34;name&#34;</span>: <span style=color:#e6db74>&#34;setprofile&#34;</span>}
+]
+</code></pre></div><p>Now, let&rsquo;s just open <a href=chrome://tracing>chrome://tracing</a>, load our file and see what happens:</p>
+<p><img src=/img/python-profiler/chrome-tracing.png alt></p>
+<p>We now have our stacktrace with timing associated to each calls.</p>
+<h3 id=conclusion>
+Conclusion
+<a href=#conclusion class=h-anchor aria-hidden=true>#</a>
+</h3>
+<p>Creating it&rsquo;s own profiler isn&rsquo;t something easy but I discovered it to be easier than I thought in Python. Of course, the profiler we designed here is lacking a lof of fonctionalities.</p>
+<p>Improvements could be following:</p>
+<ul>
+<li>Handling multiple processes</li>
+<li>Handling multiple threads</li>
+<li>Reducing profiler overhead</li>
+</ul>
+</div>
+</div>
+</div>
+<footer class=footer>
+<div class=footer__inner>
+<a href=/ class=logo style=text-decoration:none>
+<span class=logo__mark><svg xmlns="http://www.w3.org/2000/svg" class="greater-icon" viewBox="0 0 44 44"><path fill="none" d="M15 8l14.729 14.382L15 35.367"/></svg>
+</span>
+<span class=logo__text>BrokenSwing</span>
+<span class=logo__cursor></span>
+</a>
+<div class=copyright>
+<span>© 2022 Powered by
+<a href=https://gohugo.io target=_blank rel=noopener>Hugo</a></span>
+<span>Theme created by
+<a href=https://twitter.com/panr target=_blank rel=noopener>panr</a></span>
+</div>
+</div>
+</footer>
+<script src=/assets/main.js></script>
+<script src=/assets/prism.js></script>
+</div>
+</body>
+</html>
