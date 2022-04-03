@@ -11,6 +11,5 @@ showReadingTime = true
 [languages]
 [languages.en]
 title = "BrokenSwing's blog"
-subtitle = "Blog de Florent HUGOUVIEUX"
 [languages.en.params.logo]
 logoText = "BrokenSwing"
