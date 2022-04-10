@@ -11,7 +11,7 @@ In this article we will quickly see the features of the default profiler provide
 
 ## Python `profile` and `cProfile` modules
 
-Python provides two implementations of profilers: `profile` and `cProfile`. However it's recommended to use `cPython` because, as the name suggests, it's a C implementation and therefore has less overhead, leading to better results.
+Python provides two implementations of profilers: `profile` and `cProfile`. However it's recommended to use `cProfile` because, as the name suggests, it's a C implementation and therefore has less overhead, leading to better results.
 
 Python approach of profiling is the following: they collect the number of calls to each functions and accumulate the time spent in each of them. The profiler then print for each function:
 - the number of calls
