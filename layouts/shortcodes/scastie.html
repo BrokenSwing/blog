@@ -1,0 +1,55 @@
+{{/*
+  Scastie Shortcode for Hugo
+  
+  Usage:
+  
+  1. Embed a saved snippet by ID:
+     {{< scastie id="xbrvky6fTjysG32zK6kzRQ" >}}
+  
+  2. Embed inline code with Scala 3:
+     {{< scastie scala="3" >}}
+     @main def hello = println("Hello Scala 3!")
+     {{< /scastie >}}
+  
+  Parameters:
+  - id: Scastie snippet base64 UUID (for saved snippets)
+  - user: Scastie username (optional, for saved snippets)
+  - theme: "light" or "dark" (default: "light")
+  - scala: Scala version (default: "3")
+  - target: "jvm", "js", or "dotty" (default: "dotty" for Scala 3)
+*/}}
+
+{{ $id := .Get "id" }}
+{{ $user := .Get "user" }}
+{{ $theme := .Get "theme" | default "dark" }}
+{{ $scala := .Get "scala" | default "3" }}
+{{ $target := .Get "target" | default "dotty" }}
+
+{{ if $id }}
+  {{/* Saved snippet mode */}}
+  {{ if $user }}
+    <script src="https://scastie.scala-lang.org/{{ $user }}/{{ $id }}.js?theme={{ $theme }}"></script>
+  {{ else }}
+    <script src="https://scastie.scala-lang.org/{{ $id }}.js?theme={{ $theme }}"></script>
+  {{ end }}
+{{ else }}
+  {{/* Inline code mode */}}
+  {{ $uniqueId := printf "scastie-%s" (substr (md5 .Inner) 0 8) }}
+  {{ $code := .Inner }}
+  <div id="{{ $uniqueId }}" class="scastie-embed"></div>
+  <script id="code-{{ $uniqueId }}" type="text/plain">{{ $code }}</script>
+  <script src="https://scastie.scala-lang.org/embedded.js"></script>
+  <script>
+    (function() {
+      var codeEl = document.getElementById('code-{{ $uniqueId }}');
+      var code = codeEl.textContent.trim();
+      scastie.Embedded('#{{ $uniqueId }}', {
+        code: code,
+        theme: '{{ $theme }}',
+        targetType: '{{ $target }}',
+        scalaVersion: '{{ $scala }}',
+        isWorksheetMode: true
+      });
+    })();
+  </script>
+{{ end }}
