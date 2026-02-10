@@ -1,4 +1,4 @@
-baseurl      = "localhost"
+baseurl      = "blog.brokenswing.fr"
 title        = "Brokenswing"
 languageCode = "en-us"
 theme        = "hello-friend-ng"
