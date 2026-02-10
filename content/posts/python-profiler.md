@@ -14,6 +14,7 @@ In this article we will quickly see the features of the default profiler provide
 Python provides two implementations of profilers: `profile` and `cProfile`. However it's recommended to use `cProfile` because, as the name suggests, it's a C implementation and therefore has less overhead, leading to better results.
 
 Python approach of profiling is the following: they collect the number of calls to each functions and accumulate the time spent in each of them. The profiler then print for each function:
+
 - the number of calls
 - the total time spent in it (excluding calls to sub-functions)
 - the average time spent in it (per call, excluding calls to sub-functions)
@@ -23,13 +24,14 @@ Python approach of profiling is the following: they collect the number of calls 
 [see the documentation](https://docs.python.org/3/library/profile.html#instant-user-s-manual)
 
 Calling such profiler is really simple and can also be done using a CLI:
+
 ```python
 import cProfile
 import re
 cProfile.run('re.compile("foo|bar")')
 ```
 
-The default profilers however does not allow for more precise analysis of function calls. Due to these limitations, you could be tempted to write your own profiler. 
+The default profilers however does not allow for more precise analysis of function calls. Due to these limitations, you could be tempted to write your own profiler.
 
 ## Writing our own profiler
 
@@ -39,23 +41,26 @@ In this section we'll discover how to write our own profiler for Python.
 
 Python allows you to provide a profiling function that will be called when entering and exiting function frames. You can provide such function through the [sys.setprofile](https://docs.python.org/3/library/sys.html#sys.setprofile) function.
 
-According to the documentation, the profiling function will receive 3 paramters: *frame*, *event* and *arg*. The *event* parameter is a string that can take the following values:
+According to the documentation, the profiling function will receive 3 paramters: _frame_, _event_ and _arg_. The _event_ parameter is a string that can take the following values:
+
 - `'call'`
 - `'return'`
 - `'c_call'`
 - `'c_return'`
 - `'c_exception'`
 
-And *arg* parameter depends on the event type:
-- for `'call'` *arg* is `None`
-- for `'return'` *arg* is the value that will be returned
-- for `'c_call'` *arg* is the C function object
-- for `'c_return'` *arg* is the C function object
-- for `'c_exception'` *arg* is the C function object
+And _arg_ parameter depends on the event type:
+
+- for `'call'` _arg_ is `None`
+- for `'return'` _arg_ is the value that will be returned
+- for `'c_call'` _arg_ is the C function object
+- for `'c_return'` _arg_ is the C function object
+- for `'c_exception'` _arg_ is the C function object
 
 ### Follow function calls
 
-Let's create a simple profiler that will catch all these events and display the argument. 
+Let's create a simple profiler that will catch all these events and display the argument.
+
 ```python
 import sys
 import time
@@ -119,6 +124,7 @@ RETURN None
 ```
 
 Let's see if we could have expected that. The profiling starts after the call to [sys.setprofile](https://docs.python.org/3/library/sys.html#sys.setprofile).
+
 1. We call `a_python_func` which is a Python function, it then triggers a `'call'` event
 2. We call [time.time](https://docs.python.org/fr/3/library/time.html#time.time) which is a built-in C function, it then triggers a `'c_call'` event
 3. The [time.time](https://docs.python.org/fr/3/library/time.html#time.time) function returns, a `'c_return'` event is dispatched
@@ -133,11 +139,12 @@ We achieved to follow the execution of the Python script but we didn't achieve t
 
 For C functions, it's really easy. They have the `__name__` attribute that contains the function name, so `arg.__name__` should return the C function name.
 
-For Python function however, we saw that the *arg* value for `'call'` event is `None` so we will need to find it elsewhere.
+For Python function however, we saw that the _arg_ value for `'call'` event is `None` so we will need to find it elsewhere.
 
-We would like to find out which attributes the *frame* parameter has. I wasn't able to find this information in the Python documentation so I decided to put a breakpoint on the `print("CALL")` line but unfortunately the debugger doesn't get triggered. However, raising an exception in the `profile_call` function triggers the debugger so I'm able to inspect the *frame* object. The most important attributes for us right now is `f_code` which has the `co_name` attribute.
+We would like to find out which attributes the _frame_ parameter has. I wasn't able to find this information in the Python documentation so I decided to put a breakpoint on the `print("CALL")` line but unfortunately the debugger doesn't get triggered. However, raising an exception in the `profile_call` function triggers the debugger so I'm able to inspect the _frame_ object. The most important attributes for us right now is `f_code` which has the `co_name` attribute.
 
 Let's update our script:
+
 ```python
 def profile_call(frame, arg):
     print("CALL", frame.f_code.co_name)
@@ -160,6 +167,7 @@ def profile_c_exception(frame, arg):
 ```
 
 Now, running the script displays:
+
 ```
 CALL a_python_func
 C_CALL time
@@ -209,6 +217,7 @@ sys.setprofile(Profiler().profiler)
 ```
 
 On let's now add a `profile` method that will open our file and start the profiling. In our other method we will then be able to write to the file instead of using [print](https://docs.python.org/3/library/functions.html#print):
+
 ```python
 class Profiler:
     def __init__(self) -> None:
@@ -251,6 +260,7 @@ class Profiler:
 ```
 
 Now, running `Profiler().profile(a_python_func)` outputs to a file `events.txt`:
+
 ```
 CALL a_python_func
 C_CALL time
@@ -264,9 +274,10 @@ C_CALL setprofile
 > Note: We have captured a call to `setprofile` when calling `sys.setprofile(None)`
 
 Let's associate timings with our profiling logs. To start, let's log time on each log line:
+
 ```python
 class Profiler:
-    
+
     ...
 
     def _log_time(self):
@@ -291,11 +302,12 @@ class Profiler:
     def profile_c_exception(self, frame, arg):
         self._log_time()
         self._file.write(f"C_EXCEPTION {arg.__name__}\n")
-    
+
     ...
 ```
 
 Which outputs:
+
 ```
 0.078125 CALL a_python_func
 0.078125 C_CALL time
@@ -307,13 +319,16 @@ Which outputs:
 ```
 
 We observe two problems:
+
 1. The time is the same of all calls
 2. The time do not start at 0
 
 The first problem is due to our calls not taking enough time, [time.process_time](https://docs.python.org/fr/3/library/time.html#time.process_time) resolution is too low. This problem should be solved later when calling functions requiring more computational power.
+
 > Note: using [time.sleep](https://docs.python.org/fr/3/library/time.html#time.sleep) here won't help us because [time.process_time](https://docs.python.org/fr/3/library/time.html#time.process_time) doesn't include sleep time.
 
 The second problem can however be solved by retaining the time of the first event of type `'call'` or `'c_call'` and substracting later time by this initial time:
+
 ```python
 class Profiler:
     def __init__(self) -> None:
@@ -343,6 +358,7 @@ Which now gives:
 Much better.
 
 Now let's test our profiler against function with higher computational requirements.
+
 ```python
 def fib(n):
     if n == 0:
@@ -400,6 +416,7 @@ Which gives use:
 Google Chrome provides a great visualization tool for profiling and we could take advantage of it to view our profiling. This tool can be found at address [chrome://tracing](chrome://tracing) in Google Chrome browser. The specification of the file format can be found [here](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#).
 
 We see that we can provide an array of JSON object with the following properties:
+
 - `pid`: process id
 - `tid`: thread id
 - `name`: the name of the function
@@ -407,9 +424,10 @@ We see that we can provide an array of JSON object with the following properties
 - `ph`: event type (`B` for enter and `E` for exit)
 
 We already have the name, the type and the timestamp. For others, because we only handle 1 process and 1 thread we can put fixed values. Let's write a JSON to our file:
+
 ```python
 class Profiler:
-    
+
     ...
 
     def __trace_enter(self, func_name):
@@ -452,36 +470,61 @@ class Profiler:
 
     def profile_c_exception(self, frame, arg):
         self.__trace_exit(arg.__name__)
-    
+
     ...
 ```
 
 Which gives us:
+
 ```json
 [
-    {"pid": 1, "tid": 1, "ph": "B", "ts": 0.0, "name": "b_python_func"},
-    {"pid": 1, "tid": 1, "ph": "B", "ts": 0.0, "name": "fib"},
-    {"pid": 1, "tid": 1, "ph": "E", "ts": 0.015625, "name": "fib"},
-    {"pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "dump_to_file"},
-    {"pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "open"},
-    {"pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "getpreferredencoding"},
-    {"pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "_getdefaultlocale"},
-    {"pid": 1, "tid": 1, "ph": "E", "ts": 0.015625, "name": "_getdefaultlocale"},
-    {"pid": 1, "tid": 1, "ph": "E", "ts": 0.015625, "name": "getpreferredencoding"},
-    {"pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "__init__"},
-    {"pid": 1, "tid": 1, "ph": "E", "ts": 0.015625, "name": "__init__"},
-    {"pid": 1, "tid": 1, "ph": "E", "ts": 0.015625, "name": "open"},
-    {"pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "write"},
-    {"pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "encode"},
-    {"pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "charmap_encode"},
-    {"pid": 1, "tid": 1, "ph": "E", "ts": 0.015625, "name": "charmap_encode"},
-    {"pid": 1, "tid": 1, "ph": "E", "ts": 0.015625, "name": "encode"},
-    {"pid": 1, "tid": 1, "ph": "E", "ts": 0.03125, "name": "write"},
-    {"pid": 1, "tid": 1, "ph": "B", "ts": 0.03125, "name": "__exit__"},
-    {"pid": 1, "tid": 1, "ph": "E", "ts": 0.03125, "name": "__exit__"},
-    {"pid": 1, "tid": 1, "ph": "E", "ts": 0.03125, "name": "dump_to_file"},
-    {"pid": 1, "tid": 1, "ph": "E", "ts": 0.03125, "name": "b_python_func"},
-    {"pid": 1, "tid": 1, "ph": "B", "ts": 0.03125, "name": "setprofile"}
+  { "pid": 1, "tid": 1, "ph": "B", "ts": 0.0, "name": "b_python_func" },
+  { "pid": 1, "tid": 1, "ph": "B", "ts": 0.0, "name": "fib" },
+  { "pid": 1, "tid": 1, "ph": "E", "ts": 0.015625, "name": "fib" },
+  { "pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "dump_to_file" },
+  { "pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "open" },
+  {
+    "pid": 1,
+    "tid": 1,
+    "ph": "B",
+    "ts": 0.015625,
+    "name": "getpreferredencoding"
+  },
+  {
+    "pid": 1,
+    "tid": 1,
+    "ph": "B",
+    "ts": 0.015625,
+    "name": "_getdefaultlocale"
+  },
+  {
+    "pid": 1,
+    "tid": 1,
+    "ph": "E",
+    "ts": 0.015625,
+    "name": "_getdefaultlocale"
+  },
+  {
+    "pid": 1,
+    "tid": 1,
+    "ph": "E",
+    "ts": 0.015625,
+    "name": "getpreferredencoding"
+  },
+  { "pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "__init__" },
+  { "pid": 1, "tid": 1, "ph": "E", "ts": 0.015625, "name": "__init__" },
+  { "pid": 1, "tid": 1, "ph": "E", "ts": 0.015625, "name": "open" },
+  { "pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "write" },
+  { "pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "encode" },
+  { "pid": 1, "tid": 1, "ph": "B", "ts": 0.015625, "name": "charmap_encode" },
+  { "pid": 1, "tid": 1, "ph": "E", "ts": 0.015625, "name": "charmap_encode" },
+  { "pid": 1, "tid": 1, "ph": "E", "ts": 0.015625, "name": "encode" },
+  { "pid": 1, "tid": 1, "ph": "E", "ts": 0.03125, "name": "write" },
+  { "pid": 1, "tid": 1, "ph": "B", "ts": 0.03125, "name": "__exit__" },
+  { "pid": 1, "tid": 1, "ph": "E", "ts": 0.03125, "name": "__exit__" },
+  { "pid": 1, "tid": 1, "ph": "E", "ts": 0.03125, "name": "dump_to_file" },
+  { "pid": 1, "tid": 1, "ph": "E", "ts": 0.03125, "name": "b_python_func" },
+  { "pid": 1, "tid": 1, "ph": "B", "ts": 0.03125, "name": "setprofile" }
 ]
 ```
 
@@ -496,6 +539,7 @@ We now have our stacktrace with timing associated to each calls.
 Creating it's own profiler isn't something easy but I discovered it to be easier than I thought in Python. Of course, the profiler we designed here is lacking a lof of fonctionalities.
 
 Improvements could be following:
+
 - Handling multiple processes
 - Handling multiple threads
 - Reducing profiler overhead
